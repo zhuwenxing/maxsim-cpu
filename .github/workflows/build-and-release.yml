@@ -169,4 +169,11 @@ jobs:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
       run: |
+        echo "Token length: ${#TWINE_PASSWORD}"
+        if [ -z "$TWINE_PASSWORD" ]; then
+          echo "ERROR: PYPI_TOKEN secret is not set!"
+          exit 1
+        fi
+        # Debug: show first and last 4 chars of token
+        echo "Token preview: ${TWINE_PASSWORD:0:4}...${TWINE_PASSWORD: -4}"
         twine upload --skip-existing --verbose dist/*.whl
