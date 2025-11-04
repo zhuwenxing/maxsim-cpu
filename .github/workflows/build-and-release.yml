@@ -125,9 +125,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     # Publish on both releases and manual workflow runs
-    permissions:
-      id-token: write  # Required for PyPI trusted publishing via OIDC
-    
+
     steps:
     - name: Download all wheels
       uses: actions/download-artifact@v4
