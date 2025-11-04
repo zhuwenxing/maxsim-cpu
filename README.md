@@ -60,10 +60,13 @@ scores = maxsim_cpu.maxsim_scores_variable(query, docs)  # Returns [num_docs] sc
 
 ## Platform Requirements
 
-- **macOS**: Apple Silicon (M1+)
+- **macOS ARM**: Apple Silicon (M1+)
+- **macOS Intel**: x86_64 with AVX2 (Intel Haswell 2013+ - Core i3/i5/i7 4xxx series or newer)
 - **Linux**: x86_64 with AVX2 (Intel Haswell 2013+, AMD Excavator 2015+)
 
 We currently do not support Windows or take advantage of AVX512 instructions, nor do we optimise caching for specific CPUs. Contributions/PRs in this direction are welcome!
+
+**Note**: Pre-built wheels on PyPI are currently only available for Linux x86_64 and macOS ARM (Apple Silicon). For Intel Mac users, you'll need to build from source (see below).
 
 ## Building
 
@@ -101,6 +104,8 @@ You may modify it and remove any step depending on dependencies already present 
 #### Mac
 
 On Mac, the installation is simplified, assuming you use homebrew:
+
+**For Apple Silicon (M1+):**
 ```bash
 # Install maturin
 uv pip install maturin
@@ -112,7 +117,23 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Clone and install maxsim-cpu
 git clone git@github.com:mixedbread-ai/maxsim-cpu.git
 cd maxsim-cpu
-maturin build --release -q
+maturin build --release
+```
+
+**For Intel Mac (x86_64):**
+```bash
+# Install maturin
+uv pip install maturin
+# Install patchelf
+brew install patchelf
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+. "$HOME/.cargo/env"
+# Clone and install maxsim-cpu
+git clone git@github.com:mixedbread-ai/maxsim-cpu.git
+cd maxsim-cpu
+# Build with AVX2 support (requires Intel Haswell 2013+ or newer)
+RUSTFLAGS="-C target-cpu=haswell" maturin build --release
 ```
 
 ## Performance
