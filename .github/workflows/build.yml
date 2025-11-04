@@ -1,24 +1,26 @@
-name: Build and Release to PyPI
+name: Build and Test
 
 on:
-  release:
-    types: [published]        # activate on published releases
-  workflow_dispatch:          # manual trigger
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
 
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
-        os:     [ubuntu-22.04, macos-15-intel, macos-latest]   # macos-15-intel is Intel x86_64, macos-latest is ARM64 (currently macos-15)
+        os:     [ubuntu-22.04, macos-15-intel, macos-latest]   # macos-15-intel is Intel x86_64, macos-latest is ARM64
         python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
     runs-on: ${{ matrix.os }}
     env:
-      CARGO_TERM_COLOR: always          # nicer Cargo output
+      CARGO_TERM_COLOR: always
 
     steps:
-    # 1. Check out sources (and submodules if libxsmm is vendored)
+    # 1. Check out sources
     - uses: actions/checkout@v4
       with: { submodules: recursive }
 
@@ -28,7 +30,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential pkg-config patchelf
-        # Install pre-built OpenBLAS (we link directly, no compilation!)
         sudo apt-get install -y libopenblas-dev
 
     # 3. Build static libxsmm on Linux
@@ -39,22 +40,16 @@ jobs:
         make -C /tmp/libxsmm STATIC=1
         echo "LIBXSMM_DIR=/tmp/libxsmm" >> $GITHUB_ENV
 
-        # Debug: List built libraries
-        echo "=== Libraries built by libxsmm ==="
-        ls -la /tmp/libxsmm/lib/
-        echo "=================================="
-
     # 4. Toolchains
     - uses: dtolnay/rust-toolchain@stable
     - uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python }}
-    
+
     # 5. Install Python dependencies
     - name: Install Python build deps
       run: |
         pip install maturin numpy
-        # Install auditwheel on Linux only
         if [ "$RUNNER_OS" = "Linux" ]; then
           pip install auditwheel
         fi
@@ -84,7 +79,7 @@ jobs:
           auditwheel repair "$whl" --wheel-dir dist/
         done
 
-    # 8. Quick import-smoke-test
+    # 8. Smoke test
     - name: Smoke test wheel
       run: |
         # Install the wheel (prefer repaired wheel on Linux)
@@ -93,12 +88,12 @@ jobs:
         else
           pip install --no-deps --force-reinstall target/wheels/*.whl
         fi
-        
+
         # Test import and basic functionality
         python << 'EOF'
-        import maxsim_fast
+        import fast_maxsim
         import numpy as np
-        print('MaxSim Fast imported successfully')
+        print('fast-maxsim imported successfully')
 
         # Basic functionality test
         q = np.random.randn(4, 128).astype(np.float32)
@@ -106,66 +101,18 @@ jobs:
         d = np.random.randn(2, 8, 128).astype(np.float32)
         d = d / np.linalg.norm(d, axis=2, keepdims=True)
 
-        scores = maxsim_fast.maxsim_scores(q, d)
+        scores = fast_maxsim.maxsim_scores(q, d)
         print(f'Test passed! Scores shape: {scores.shape}')
         assert scores.shape == (2,), f'Expected shape (2,), got {scores.shape}'
         EOF
 
-    # 9. Upload artifacts
+    # 9. Upload artifacts (optional, for debugging)
     - uses: actions/upload-artifact@v4
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       with:
         name: wheels-${{ matrix.os }}-${{ matrix.python }}
         path: |
           target/wheels/*.whl
           dist/*.whl
         if-no-files-found: error
-
-  publish:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-    # Publish on both releases and manual workflow runs
-
-    steps:
-    - name: Download all wheels
-      uses: actions/download-artifact@v4
-      with:
-        pattern: wheels-*
-        merge-multiple: true
-
-    - name: Prepare wheels for publishing
-      run: |
-        # Debug: Show what was downloaded
-        echo "=== All files after artifact download ==="
-        find . -type f | grep -E '\.(whl|zip)$' | sort
-        echo "========================================="
-
-        # Create clean dist directory
-        mkdir -p dist/
-
-        # Find all wheel files and move them to dist/
-        find . -name "*.whl" -type f -exec mv {} dist/ \;
-
-        # Verify we have wheels, not zips
-        echo "=== Wheels ready for publishing in dist/ ==="
-        ls -la dist/
-        if [ -z "$(ls -A dist/)" ]; then
-          echo "ERROR: No wheel files found in dist/"
-          exit 1
-        fi
-        echo "==========================================="
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install twine
-      run: pip install twine
-
-    - name: Publish to PyPI using twine
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-      run: |
-        twine upload --skip-existing --verbose dist/*.whl
+        retention-days: 7
