@@ -125,6 +125,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     # Publish on both releases and manual workflow runs
+    permissions:
+      contents: read  # Explicitly set permissions to prevent OIDC token access
 
     steps:
     - name: Download all wheels
@@ -164,3 +166,4 @@ jobs:
         packages-dir: dist/
         skip-existing: true
         verbose: true
+        attestations: false  # Disable attestations which require OIDC
